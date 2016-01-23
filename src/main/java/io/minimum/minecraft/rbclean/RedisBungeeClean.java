@@ -63,7 +63,7 @@ public class RedisBungeeClean {
                 System.out.println("Creating backup (as " + file.getName() + ")...");
 
                 try (OutputStreamWriter bw = new OutputStreamWriter(new GZIPOutputStream(new FileOutputStream(file)))) {
-                    bw.write(gson.toJson(uuidCache));
+                    gson.toJson(uuidCache, bw);
                 } catch (IOException e) {
                     System.out.println("Can't write backup of the UUID cache, will NOT proceed.");
                     e.printStackTrace();
