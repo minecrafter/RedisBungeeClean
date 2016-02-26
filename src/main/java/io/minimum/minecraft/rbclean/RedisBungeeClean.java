@@ -4,6 +4,7 @@ package io.minimum.minecraft.rbclean;
 import com.google.gson.Gson;
 import org.apache.commons.cli.*;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Transaction;
 
 import java.io.*;
 import java.text.SimpleDateFormat;
@@ -86,8 +87,10 @@ public class RedisBungeeClean {
                 System.out.println((originalSize - newSize) + " records would be expunged if a dry run was not conducted.");
             } else {
                 System.out.println("Expunging " + (originalSize - newSize) + " records...");
-                jedis.del("uuid-cache");
-                jedis.hmset("uuid-cache", uuidCache);
+                Transaction transaction = jedis.multi();
+                transaction.del("uuid-cache");
+                transaction.hmset("uuid-cache", uuidCache);
+                transaction.exec();
                 System.out.println("Expunging complete.");
             }
         }
