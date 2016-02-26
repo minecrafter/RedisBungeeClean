@@ -8,12 +8,9 @@ import redis.clients.jedis.Jedis;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.zip.GZIPOutputStream;
 
 public class RedisBungeeClean {
-    private static final Gson gson = new Gson();
-
     public static void main(String... args) {
         Options options = new Options();
 
@@ -40,7 +37,6 @@ public class RedisBungeeClean {
             return;
         }
 
-        ExecutorService service = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         int port = commandLine.hasOption('p') ? Integer.parseInt(commandLine.getOptionValue('p')) : 6379;
 
         try (Jedis jedis = new Jedis(commandLine.getOptionValue('h'), port, 0)) {
@@ -50,6 +46,7 @@ public class RedisBungeeClean {
 
             System.out.println("Fetching UUID cache...");
             Map<String, String> uuidCache = jedis.hgetAll("uuid-cache");
+            Gson gson = new Gson();
 
             // Just in case we need it, compress everything in JSON format.
             if (!commandLine.hasOption('d')) {
@@ -76,36 +73,13 @@ public class RedisBungeeClean {
 
             System.out.println("Cleaning out the bird cage (this may take a while...)");
             int originalSize = uuidCache.size();
+            for (Iterator<Map.Entry<String, String>> it = uuidCache.entrySet().iterator(); it.hasNext(); ) {
+                CachedUUIDEntry entry = gson.fromJson(it.next().getValue(), CachedUUIDEntry.class);
 
-            Map<String, Future<Boolean>> results = new HashMap<>();
-
-            for (final Map.Entry<String, String> e : uuidCache.entrySet()) {
-                FutureTask<Boolean> task = new FutureTask<>(new Callable<Boolean>() {
-                    @Override
-                    public Boolean call() throws Exception {
-                        return gson.fromJson(e.getValue(), CachedUUIDEntry.class).expired();
-                    }
-                });
-                service.execute(task);
-                results.put(e.getKey(), task);
-            }
-
-            for (Map.Entry<String, Future<Boolean>> entry : results.entrySet()) {
-                boolean res;
-                try {
-                    res = entry.getValue().get();
-                } catch (InterruptedException | ExecutionException e) {
-                    // ignore it
-                    System.out.println("Error found:");
-                    e.printStackTrace();
-                    res = true;
-                }
-
-                if (res) {
-                    uuidCache.remove(entry.getKey());
+                if (entry.expired()) {
+                    it.remove();
                 }
             }
-
             int newSize = uuidCache.size();
 
             if (commandLine.hasOption('d')) {
@@ -116,9 +90,22 @@ public class RedisBungeeClean {
                 jedis.hmset("uuid-cache", uuidCache);
                 System.out.println("Expunging complete.");
             }
-        } finally {
-            service.shutdownNow();
         }
     }
 
+    private class CachedUUIDEntry {
+        private final String name;
+        private final UUID uuid;
+        private final Calendar expiry;
+
+        private CachedUUIDEntry(String name, UUID uuid, Calendar expiry) {
+            this.name = name;
+            this.uuid = uuid;
+            this.expiry = expiry;
+        }
+
+        public boolean expired() {
+            return Calendar.getInstance().after(expiry);
+        }
+    }
 }
